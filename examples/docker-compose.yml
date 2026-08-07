@@ -1,0 +1,23 @@
+# thinkgate in front of a real Ollama instance. Point an existing client at
+# thinkgate's port instead of Ollama's (e.g. LangChain's
+# ChatOpenAI(base_url="http://localhost:11435/v1")) and it gets healing for
+# free, no code changes.
+services:
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+
+  thinkgate:
+    build: ..
+    ports:
+      - "11435:11435"
+    environment:
+      THINKGATE_UPSTREAM: http://ollama:11434
+    depends_on:
+      - ollama
+
+volumes:
+  ollama:
