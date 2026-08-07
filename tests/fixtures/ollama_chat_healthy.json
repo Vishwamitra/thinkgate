@@ -1,0 +1,1 @@
+{"model":"gemma4:12b","created_at":"2026-08-07T21:02:00.235839Z","message":{"role":"assistant","content":"Hello, my friend."},"done":true,"done_reason":"stop","total_duration":1261754375,"load_duration":381210167,"prompt_eval_count":20,"prompt_eval_duration":413149000,"eval_count":6,"eval_duration":399925000}
