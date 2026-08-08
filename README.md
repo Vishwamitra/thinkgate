@@ -79,12 +79,19 @@ just point it at thinkgate's port instead:
 ```bash
 curl http://localhost:11435/api/chat -d '{
   "model": "your-thinking-model",
-  "messages": [{"role": "user", "content": "Say hello in exactly three words."}]
+  "messages": [{"role": "user", "content": "Say hello in exactly three words."}],
+  "stream": false
 }'
 ```
 
 A request that would come back empty against raw Ollama comes back with real
 content through thinkgate. No client-side changes required.
+
+`stream: false` matters here — Ollama itself defaults to streaming when the
+field is omitted, and healing only applies to non-streaming requests (see
+Limitations). thinkgate mirrors Ollama's own default, so an omitted `stream`
+field gets passed straight through unhealed, same as it would talk to Ollama
+directly.
 
 ### Point an existing client at it
 

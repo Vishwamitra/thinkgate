@@ -16,7 +16,11 @@ async def chat(request: Request):
     payload = await request.json()
     base_url = request.app.state.upstream_base_url
 
-    if payload.get("stream"):
+    # Ollama itself defaults to streaming when the field is omitted, not to
+    # stream:false -- match that default rather than silently treating a
+    # missing field as non-streaming and crashing trying to parse NDJSON
+    # chunks as one JSON body.
+    if payload.get("stream", True):
         return await stream_passthrough(base_url, "/api/chat", payload)
 
     client = OllamaClient(base_url=base_url)

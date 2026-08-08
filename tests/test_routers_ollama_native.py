@@ -18,7 +18,11 @@ def test_chat_returns_healthy_response_unmodified():
 
         response = _client().post(
             "/api/chat",
-            json={"model": "gemma4:12b", "messages": [{"role": "user", "content": "hi"}]},
+            json={
+                "model": "gemma4:12b",
+                "messages": [{"role": "user", "content": "hi"}],
+                "stream": False,
+            },
         )
 
     assert response.status_code == 200
@@ -37,7 +41,11 @@ def test_chat_transparently_heals_an_exhausted_response():
 
         response = _client().post(
             "/api/chat",
-            json={"model": "gemma4:12b", "messages": [{"role": "user", "content": "hi"}]},
+            json={
+                "model": "gemma4:12b",
+                "messages": [{"role": "user", "content": "hi"}],
+                "stream": False,
+            },
         )
 
     assert response.status_code == 200
@@ -55,7 +63,11 @@ def test_stats_endpoint_reflects_recorded_requests():
 
         client.post(
             "/api/chat",
-            json={"model": "gemma4:12b", "messages": [{"role": "user", "content": "hi"}]},
+            json={
+                "model": "gemma4:12b",
+                "messages": [{"role": "user", "content": "hi"}],
+                "stream": False,
+            },
         )
 
         after = client.get("/stats").json()
@@ -81,6 +93,28 @@ def test_streaming_requests_bypass_healing_and_go_to_passthrough():
                 "messages": [{"role": "user", "content": "hi"}],
                 "stream": True,
             },
+        )
+
+    mock_cls.return_value.chat.assert_not_called()
+    mock_passthrough.assert_called_once()
+
+
+def test_omitted_stream_field_also_goes_to_passthrough():
+    """Ollama itself defaults to streaming when the field is missing, not
+    to stream:false -- a request that never mentions `stream` must be
+    treated the same as `stream: true`, or thinkgate ends up trying to
+    parse Ollama's NDJSON chunks as a single JSON response and breaks."""
+    fake_stream_response = JSONResponse({"passthrough": True})
+    with (
+        patch("thinkgate.routers.ollama_native.OllamaClient") as mock_cls,
+        patch(
+            "thinkgate.routers.ollama_native.stream_passthrough",
+            new=AsyncMock(return_value=fake_stream_response),
+        ) as mock_passthrough,
+    ):
+        _client().post(
+            "/api/chat",
+            json={"model": "gemma4:12b", "messages": [{"role": "user", "content": "hi"}]},
         )
 
     mock_cls.return_value.chat.assert_not_called()

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import os
 
-from fastapi import FastAPI
+import httpx
+from fastapi import FastAPI, Request
+from fastapi.responses import Response
 
 from thinkgate.routers import ollama_native, openai_compat, vllm_compat
 from thinkgate.stats import stats
@@ -19,6 +21,17 @@ def create_app(upstream_base_url: str = DEFAULT_UPSTREAM, backend: str = DEFAULT
         "emptied by exhausted token budgets.",
     )
     app.state.upstream_base_url = upstream_base_url
+
+    @app.exception_handler(httpx.HTTPStatusError)
+    async def upstream_error(request: Request, exc: httpx.HTTPStatusError) -> Response:
+        # An upstream error (wrong model name, upstream down, ...) isn't
+        # something to heal -- relay it exactly as the backend sent it
+        # rather than letting it fall through to a generic 500.
+        return Response(
+            content=exc.response.content,
+            status_code=exc.response.status_code,
+            media_type=exc.response.headers.get("content-type", "application/json"),
+        )
 
     if backend == "ollama":
         app.include_router(ollama_native.router)
