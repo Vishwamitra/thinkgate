@@ -1,0 +1,23 @@
+{
+  "id": "chatcmpl-789",
+  "object": "chat.completion",
+  "created": 1694268210,
+  "model": "Qwen/Qwen3-8B",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Here is a genuinely long answer that just happened to run out of room before it could finish covering every",
+        "reasoning": "Short reasoning trace here, this one didn't run away."
+      },
+      "finish_reason": "length",
+      "logprobs": null
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 12,
+    "completion_tokens": 200,
+    "total_tokens": 212
+  }
+}

@@ -19,3 +19,15 @@ def is_thinking_exhausted(response: dict, caller_set_think: bool) -> bool:
     # this bug, and must not trigger a retry.
     content = response.get("message", {}).get("content", "")
     return len(content.strip()) < _EMPTY_CONTENT_THRESHOLD
+
+
+def is_thinking_exhausted_openai_shape(response: dict, caller_set_thinking: bool) -> bool:
+    """Same signature, read from an OpenAI-shaped response (vLLM and other
+    OpenAI-compatible servers) instead of Ollama's."""
+    if caller_set_thinking:
+        return False
+    choice = (response.get("choices") or [{}])[0]
+    if choice.get("finish_reason") != "length":
+        return False
+    content = choice.get("message", {}).get("content", "")
+    return len(content.strip()) < _EMPTY_CONTENT_THRESHOLD

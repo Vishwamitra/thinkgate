@@ -1,0 +1,23 @@
+{
+  "id": "chatcmpl-123",
+  "object": "chat.completion",
+  "created": 1694268190,
+  "model": "Qwen/Qwen3-8B",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Hello, my friend.",
+        "reasoning": "The user wants a short greeting, so I'll keep it brief."
+      },
+      "finish_reason": "stop",
+      "logprobs": null
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 12,
+    "completion_tokens": 24,
+    "total_tokens": 36
+  }
+}
