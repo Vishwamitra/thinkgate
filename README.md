@@ -1,9 +1,10 @@
 # thinkgate
 
-A reverse proxy for [Ollama](https://ollama.com) that detects and heals the
-"thinking model returns nothing" failure: a reasoning-capable model burns its
-entire output-token budget on a hidden chain-of-thought and comes back with
-`done_reason: "length"` and empty content — no error, just silence.
+A reverse proxy for [Ollama](https://ollama.com) and [vLLM](https://docs.vllm.ai)
+that detects and heals the "thinking model returns nothing" failure: a
+reasoning-capable model burns its entire output-token budget on a hidden
+chain-of-thought and comes back with `done_reason: "length"` and empty
+content — no error, just silence.
 
 ## Why
 
@@ -50,11 +51,17 @@ Detection is behavioral, not a hardcoded model list — see
 [`src/thinkgate/detect.py`](src/thinkgate/detect.py). An explicit `think`
 from the caller is always respected and never overridden.
 
-Both endpoint families a client already expects are supported, so pointing
-something at thinkgate is just a base-URL swap:
+(vLLM follows the same detect → retry shape, but heals by raising the token
+budget instead of disabling thinking — see the vLLM backend section below
+for why.)
 
-- `/api/chat` — Ollama-native (includes a streaming passthrough — not yet healed, see Limitations)
-- `/v1/chat/completions` — OpenAI-compatible, for LangChain/CrewAI/the `openai` SDK/etc.
+Which endpoints are active depends on `THINKGATE_BACKEND`:
+
+- **`ollama`** (default) — `/api/chat` (native, includes a streaming
+  passthrough — not yet healed, see Limitations) and `/v1/chat/completions`
+  (OpenAI-compatible, translated to Ollama's shape)
+- **`vllm`** — `/v1/chat/completions` only, since vLLM already speaks that
+  shape natively
 
 ## Quickstart
 
@@ -100,8 +107,9 @@ any other OpenAI-compatible client. Swap the URL, keep the code.
 
 | env var | default | purpose |
 | --- | --- | --- |
-| `THINKGATE_UPSTREAM` | `http://localhost:11434` | the real Ollama server to proxy to |
+| `THINKGATE_UPSTREAM` | `http://localhost:11434` | the real Ollama/vLLM server to proxy to |
 | `THINKGATE_PORT` | `11435` | port thinkgate itself listens on |
+| `THINKGATE_BACKEND` | `ollama` | `ollama` or `vllm` |
 
 ### Stats
 
@@ -117,24 +125,57 @@ docker compose -f examples/docker-compose.yml up
 ```
 
 Runs thinkgate alongside Ollama, pre-wired together — see
-[`examples/docker-compose.yml`](examples/docker-compose.yml).
+[`examples/docker-compose.yml`](examples/docker-compose.yml). The compose
+example is Ollama-only for now; for vLLM, point `THINKGATE_UPSTREAM` at
+your own vLLM deployment with `THINKGATE_BACKEND=vllm` set.
+
+## vLLM backend
+
+Point thinkgate at a vLLM OpenAI-compatible server instead of Ollama:
+
+```bash
+THINKGATE_BACKEND=vllm THINKGATE_UPSTREAM=http://localhost:8000 thinkgate
+```
+
+Only `/v1/chat/completions` is active in this mode — vLLM doesn't speak
+Ollama's native API, so there's no `/api/chat` to expose.
+
+The healing strategy is different here. vLLM has no universal "disable
+thinking" switch: it's per-model (Qwen3 uses `enable_thinking`, granite
+uses `thinking`, and DeepSeek-R1 distills have no switch at all). So
+instead of forcing thinking off, thinkgate retries once with `max_tokens`
+multiplied by 4 — that works no matter which model is actually being
+served. Healing is skipped if the original request didn't set `max_tokens`
+(nothing to scale up) or if it already set `chat_template_kwargs.enable_thinking`
+itself.
+
+**Not yet verified against a live vLLM instance.** Everything else in this
+project was proven against a real running model before being called done;
+this wasn't, because vLLM's mainline support is CUDA-first and there's no
+NVIDIA GPU on the machine it was built on. The adapter is written against
+vLLM's [documented response shape](https://docs.vllm.ai/en/latest/features/reasoning_outputs/)
+and covered by tests using hand-built fixtures (`tests/fixtures/vllm_*.json`
+— clearly separate from the real captured Ollama ones). If you run this
+against a real vLLM server and something's off, please open an issue.
 
 ## Limitations
 
 These are deliberate cuts for v1, not oversights.
 
-- **Streaming isn't healed.** `/api/chat` passes a streaming request
-  straight through to Ollama unchanged; buffering a whole stream just to
-  decide whether to retry it isn't worth the added latency for v1.
-  `/v1/chat/completions` returns `501` on a streaming request rather than a
-  silently broken passthrough, since Ollama's stream format and OpenAI's SSE
-  aren't the same wire format (see
-  [`openai_compat.py`](src/thinkgate/routers/openai_compat.py)). Streaming
-  healing is the natural v2.
-- **Ollama only.** The detect → retry → heal shape is backend-agnostic by
-  design, but v1 only ships the Ollama adapter (the one we've directly
-  proven the bug against). vLLM/LM Studio adapters are additive, not a
-  rewrite.
+- **Streaming isn't healed**, on either backend. `/api/chat` (Ollama)
+  passes a streaming request straight through unchanged; buffering a whole
+  stream just to decide whether to retry it isn't worth the added latency
+  for v1. `/v1/chat/completions` returns `501` on a streaming request
+  rather than a silently broken passthrough, since neither backend's native
+  stream and OpenAI's SSE are the same wire format. Streaming healing is
+  the natural v2.
+- **vLLM support is unverified against a live instance** — see the vLLM
+  backend section above for why, and what's been checked instead.
+- **No OpenAI backend yet.** OpenAI's reasoning models have no user-facing
+  thinking-off switch either, so the realistic fix there looks closer to
+  vLLM's (retry with a bigger budget) than Ollama's — but that's unproven
+  without a real repro against OpenAI's API, so it's not built rather than
+  built and guessed at.
 - **No dashboard.** Observability is the `/stats` endpoint plus log lines.
   Enough to prove the value; a UI can come later if it's actually needed.
 
@@ -145,8 +186,9 @@ uv sync
 uv run pytest
 ```
 
-23 tests, using real captured Ollama fixtures under `tests/fixtures/` for the
-response shapes that matter, rather than hand-written stubs.
+42 tests. Ollama fixtures are real captured responses; vLLM fixtures are
+hand-built against vLLM's documented shape (see Limitations) — both live
+under `tests/fixtures/`.
 
 ## License
 
